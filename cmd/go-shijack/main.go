@@ -23,7 +23,8 @@ func main() {
 			dstIp := context.String("dst-ip")
 			dstPort := context.Uint("dst-port")
 			payloadFile := context.String("payload-file")
-			gohijack.Hijack(interfaceName, srcIp, srcPort, dstIp, dstPort, payloadFile)
+			keep := context.Bool("keep")
+			gohijack.Hijack(interfaceName, srcIp, uint32(srcPort), dstIp, dstPort, payloadFile, !keep)
 			return
 		},
 		Flags: []cli.Flag{
@@ -56,6 +57,10 @@ func main() {
 				Name:     "payload-file",
 				Aliases:  []string{"f"},
 				Required: true,
+			},
+			&cli.BoolFlag{
+				Name:    "keep",
+				Aliases: []string{"k"},
 			},
 		},
 	}

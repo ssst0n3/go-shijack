@@ -11,7 +11,7 @@ const (
 	etherTypeIP   = 0x800
 )
 
-func GenerateFilter(srcIp string, srcPort int) (ins []bpf.RawInstruction, err error) {
+func GenerateFilter(srcIp string, srcPort uint32) (ins []bpf.RawInstruction, err error) {
 	srcIpAtoN := uint32(InetAtoN(srcIp))
 	// https://gist.github.com/errzey/1111503/bbcda355e8ffbf5141dc10e0e551eb6edf666e36
 	filter := []bpf.Instruction{
@@ -57,7 +57,7 @@ func GenerateFilter(srcIp string, srcPort int) (ins []bpf.RawInstruction, err er
 		bpf.LoadIndirect{Off: 0xe, Size: 2},
 		// jneq #80,1,
 		// If the value of packet offset 34 is 0x50 (tcp source port 80) jump to 1, else
-		bpf.JumpIf{Cond: bpf.JumpNotEqual, Val: uint32(srcPort), SkipTrue: 0x1, SkipFalse: 0x0},
+		bpf.JumpIf{Cond: bpf.JumpNotEqual, Val: srcPort, SkipTrue: 0x1, SkipFalse: 0x0},
 		// ret #65535,
 		bpf.RetConstant{Val: 0xffff},
 		// ret #0
