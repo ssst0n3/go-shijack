@@ -43,6 +43,7 @@ func NewConnection(srcIp, dstIp net.IP, srcPort, dstPort layers.TCPPort, seq, ac
 }
 
 func CreateSocket() (rawConn *ipv4.RawConn, err error) {
+	// https://github.com/david415/HoneyBadger/blob/021246788e58cedf88dee75ac5dbf7ae60e12514/packetSendTest.go#L95
 	var packetConn net.PacketConn
 	packetConn, err = net.ListenPacket("ip4:tcp", "0.0.0.0")
 	if err != nil {

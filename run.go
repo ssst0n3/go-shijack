@@ -4,6 +4,7 @@ import (
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/ssst0n3/awesome_libs/awesome_error"
+	"github.com/ssst0n3/gohijack/sniff"
 	"os"
 )
 
@@ -33,7 +34,7 @@ func Hijack(interfaceName string, srcIp string, srcPort uint32, dstIp string, ds
 		awesome_error.CheckErr(err)
 		return
 	}
-	sniffer := PureGo{}
+	sniffer := sniff.PureGo{}
 	filter, err := GenerateFilter(srcIp, srcPort)
 	if err != nil {
 		return
