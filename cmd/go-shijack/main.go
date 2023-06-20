@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/ssst0n3/gohijack"
+	"github.com/ssst0n3/go-shijack"
 	"github.com/urfave/cli/v2"
 	"log"
 	"os"

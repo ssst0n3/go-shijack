@@ -1,4 +1,4 @@
-module github.com/ssst0n3/gohijack
+module github.com/ssst0n3/go-shijack
 
 go 1.19
 

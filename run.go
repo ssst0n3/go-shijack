@@ -4,7 +4,7 @@ import (
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/ssst0n3/awesome_libs/awesome_error"
-	"github.com/ssst0n3/gohijack/sniff"
+	"github.com/ssst0n3/go-shijack/sniff"
 	"os"
 )
 
