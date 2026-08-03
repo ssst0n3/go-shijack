@@ -62,7 +62,7 @@ A valid HTTP response, no leading blank line, `Content-Length` matching the body
 ```bash
 cat > flag <<'EOF'
 HTTP/1.1 200 OK
-Content-Length: 9
+Content-Length: 11
 
 flag{test}
 EOF
