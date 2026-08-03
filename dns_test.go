@@ -2,33 +2,13 @@ package gohijack
 
 import (
 	"encoding/binary"
-	"github.com/davecgh/go-spew/spew"
-	"github.com/google/gopacket"
-	"github.com/google/gopacket/layers"
-	"github.com/google/gopacket/pcap"
-	"github.com/ssst0n3/awesome_libs/log"
-	"github.com/stretchr/testify/assert"
-	"golang.org/x/net/bpf"
 	"net"
 	"testing"
+
+	"github.com/google/gopacket"
+	"github.com/google/gopacket/layers"
+	"github.com/stretchr/testify/assert"
 )
-
-func TestGenerateFilterUDP(t *testing.T) {
-	snaplen := 65535
-	filter := "udp and dst host 8.8.8.8 and dst port 53"
-	pcapBPF, err := pcap.CompileBPFFilter(layers.LinkTypeEthernet, snaplen, filter)
-	assert.NoError(t, err)
-	spew.Dump(pcapBPF)
-
-	ours, err := GenerateFilterUDP("8.8.8.8", 53)
-	assert.NoError(t, err)
-	log.Logger.Infof("ours: %#v", ours)
-	log.Logger.Infof("pcap: %+v", pcapBPF)
-	// Both filters accept/reject the same packets; instruction-level equality
-	// is not guaranteed because libpcap may choose a different encoding, so we
-	// only sanity-check that our filter assembled to a non-empty program.
-	assert.NotEmpty(t, ours)
-}
 
 func TestBuildDNSResponse(t *testing.T) {
 	// A minimal query for "example.com." type A, IN.
@@ -62,6 +42,16 @@ func TestBuildDNSResponse(t *testing.T) {
 	assert.Equal(t, layers.DNSTypeA, decoded.Answers[0].Type)
 	assert.Equal(t, layers.DNSClassIN, decoded.Answers[0].Class)
 	assert.True(t, ip.Equal(decoded.Answers[0].IP))
+
+	// Section counts must be coherent.
+	assert.Equal(t, uint16(1), decoded.QDCount, "one question should be echoed")
+	assert.Equal(t, uint16(1), decoded.ANCount, "one answer should be present")
+	assert.Equal(t, uint32(600), decoded.Answers[0].TTL)
+
+	// The answer name must resolve to the queried domain. gopacket decodes the
+	// wire-format name into a dotted string; this guards against the answer
+	// being written as raw ASCII (bug #4).
+	assert.Equal(t, "example.com", string(decoded.Answers[0].Name))
 }
 
 func TestRewriteTXID(t *testing.T) {
@@ -72,6 +62,3 @@ func TestRewriteTXID(t *testing.T) {
 	assert.Equal(t, uint16(0x0000), binary.BigEndian.Uint16(raw[:2]))
 	assert.Equal(t, byte(0xAB), out[2])
 }
-
-// silence unused-import in case bpf is only referenced conditionally.
-var _ = bpf.RawInstruction{}

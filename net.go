@@ -19,17 +19,17 @@ type Connection struct {
 	rawConn *ipv4.RawConn
 }
 
-func NewConnectionFromPacket(packet gopacket.Packet) (*Connection, error) {
+// NewConnectionFromPacket builds a Connection that reuses the caller-supplied
+// rawConn. The socket is created once per hijack session (see Hijack/HijackDNS)
+// instead of per packet, so on-path injection stays fast and no file
+// descriptors leak under --keep.
+func NewConnectionFromPacket(packet gopacket.Packet, rawConn *ipv4.RawConn) (*Connection, error) {
 	ip4 := packet.Layer(layers.LayerTypeIPv4).(*layers.IPv4)
 	tcp := packet.Layer(layers.LayerTypeTCP).(*layers.TCP)
-	return NewConnection(ip4.SrcIP, ip4.DstIP, tcp.SrcPort, tcp.DstPort, tcp.Seq, tcp.Ack)
+	return NewConnection(ip4.SrcIP, ip4.DstIP, tcp.SrcPort, tcp.DstPort, tcp.Seq, tcp.Ack, rawConn)
 }
 
-func NewConnection(srcIp, dstIp net.IP, srcPort, dstPort layers.TCPPort, seq, ack uint32) (connection *Connection, err error) {
-	rawConn, err := CreateSocket()
-	if err != nil {
-		return
-	}
+func NewConnection(srcIp, dstIp net.IP, srcPort, dstPort layers.TCPPort, seq, ack uint32, rawConn *ipv4.RawConn) (connection *Connection, err error) {
 	connection = &Connection{
 		SrcIP:   srcIp,
 		DstIP:   dstIp,
@@ -136,17 +136,14 @@ type UDPConnection struct {
 // NewUDPConnectionFromPacket builds a response path by swapping the source and
 // destination of a captured UDP query: the resolver (original dst) becomes the
 // source of the forged reply, the client (original src) becomes the destination.
-func NewUDPConnectionFromPacket(packet gopacket.Packet) (*UDPConnection, error) {
+// It reuses the caller-supplied rawConn (created once per hijack session).
+func NewUDPConnectionFromPacket(packet gopacket.Packet, rawConn *ipv4.RawConn) (*UDPConnection, error) {
 	ip4 := packet.Layer(layers.LayerTypeIPv4).(*layers.IPv4)
 	udp := packet.Layer(layers.LayerTypeUDP).(*layers.UDP)
-	return NewUDPConnection(ip4.DstIP, ip4.SrcIP, udp.DstPort, udp.SrcPort)
+	return NewUDPConnection(ip4.DstIP, ip4.SrcIP, udp.DstPort, udp.SrcPort, rawConn)
 }
 
-func NewUDPConnection(srcIp, dstIp net.IP, srcPort, dstPort layers.UDPPort) (connection *UDPConnection, err error) {
-	rawConn, err := CreateSocketUDP()
-	if err != nil {
-		return
-	}
+func NewUDPConnection(srcIp, dstIp net.IP, srcPort, dstPort layers.UDPPort, rawConn *ipv4.RawConn) (connection *UDPConnection, err error) {
 	connection = &UDPConnection{
 		SrcIP:   srcIp,
 		DstIP:   dstIp,
