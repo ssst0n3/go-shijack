@@ -5,18 +5,10 @@ import (
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/ssst0n3/awesome_libs/awesome_error"
-	"github.com/ssst0n3/awesome_libs/log"
 	"github.com/ssst0n3/go-shijack/sniff"
 	"net"
 	"os"
 )
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
 
 func doHijack(packet gopacket.Packet, payload []byte) (err error) {
 	connection, err := NewConnectionFromPacket(packet)
@@ -38,7 +30,7 @@ func doHijack(packet gopacket.Packet, payload []byte) (err error) {
 	return
 }
 
-func Hijack(interfaceName string, srcIp string, srcPort uint32, dstIp string, dstPort uint, payloadFile string, once bool) (err error) {
+func Hijack(interfaceName string, srcIp string, srcPort uint32, payloadFile string, once bool) (err error) {
 	payload, err := os.ReadFile(payloadFile)
 	if err != nil {
 		awesome_error.CheckErr(err)
@@ -99,36 +91,21 @@ func HijackDNS(interfaceName string, resolverIp string, resolverPort uint32, dom
 		return
 	}
 	for packet := range packets {
-		var ltypes []string
-		for _, l := range packet.Layers() {
-			ltypes = append(ltypes, l.LayerType().String())
-		}
-		raw := packet.Data()
-		proto := byte(0)
-		if len(raw) > 23 {
-			proto = raw[23]
-		}
-		log.Logger.Infof("DEBUG: layers=%v data=%d proto=%d head=%x", ltypes, len(raw), proto, raw[:min(40, len(raw))])
 		udpLayer := packet.Layer(layers.LayerTypeUDP)
 		if udpLayer == nil {
-			log.Logger.Info("DEBUG: no UDP layer, skip")
 			continue
 		}
 		dnsLayer := packet.Layer(layers.LayerTypeDNS)
 		if dnsLayer == nil {
-			log.Logger.Info("DEBUG: no DNS layer, skip")
 			continue
 		}
 		queryDNS, _ := dnsLayer.(*layers.DNS)
 		if queryDNS == nil {
-			log.Logger.Info("DEBUG: dns cast failed, skip")
 			continue
 		}
 		if queryDNS.QR {
-			log.Logger.Info("DEBUG: queryDNS.QR true (response), skip")
 			continue
 		}
-		log.Logger.Infof("DEBUG: query TXID=%d questions=%v", queryDNS.ID, queryDNS.Questions)
 		var payload []byte
 		if autoMode {
 			payload, err = BuildDNSResponse(queryDNS, domain, answerIp)

@@ -19,16 +19,14 @@ func main() {
 		Usage: usage,
 		Action: func(context *cli.Context) (err error) {
 			interfaceName := context.String("interface")
-			srcIp := context.String("src-ip")
-			srcPort := context.Uint("src-port")
-			dstIp := context.String("dst-ip")
-			dstPort := context.Uint("dst-port")
+			srcIp := context.String("ip")
+			srcPort := context.Uint("port")
 			payloadFile := context.String("payload-file")
 			keep := context.Bool("keep")
 			protocol := context.String("protocol")
 			switch protocol {
 			case "tcp", "":
-				gohijack.Hijack(interfaceName, srcIp, uint32(srcPort), dstIp, dstPort, payloadFile, !keep)
+				gohijack.Hijack(interfaceName, srcIp, uint32(srcPort), payloadFile, !keep)
 			case "dns":
 				var answerIp net.IP
 				dnsDomain := context.String("dns-domain")
@@ -49,24 +47,14 @@ func main() {
 				Required: true,
 			},
 			&cli.StringFlag{
-				Name:     "src-ip",
-				Aliases:  []string{"i", "si"},
+				Name:     "ip",
+				Aliases:  []string{"i"},
 				Required: true,
 			},
 			&cli.UintFlag{
-				Name:     "src-port",
-				Aliases:  []string{"p", "sp"},
+				Name:     "port",
+				Aliases:  []string{"p"},
 				Required: true,
-			},
-			&cli.StringFlag{
-				Name:     "dst-ip",
-				Aliases:  []string{"di"},
-				Required: false,
-			},
-			&cli.UintFlag{
-				Name:     "dst-port",
-				Aliases:  []string{"dp"},
-				Required: false,
 			},
 			&cli.StringFlag{
 				Name:     "payload-file",
@@ -85,12 +73,10 @@ func main() {
 			},
 			&cli.StringFlag{
 				Name:    "dns-domain",
-				Aliases: []string{"dd"},
 				Usage:   "dns hijack: domain to answer (auto-construct mode)",
 			},
 			&cli.StringFlag{
 				Name:    "dns-ip",
-				Aliases: []string{"dip"},
 				Usage:   "dns hijack: A record IP to return (auto-construct mode)",
 			},
 		},
