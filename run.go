@@ -37,6 +37,11 @@ func Hijack(interfaceName string, srcIp string, srcPort uint32, payloadFile stri
 		awesome_error.CheckErr(err)
 		return
 	}
+	if len(payload) == 0 {
+		err = fmt.Errorf("payload file %q is empty; nothing to inject", payloadFile)
+		awesome_error.CheckErr(err)
+		return
+	}
 	rawConn, err := CreateSocket()
 	if err != nil {
 		return
@@ -86,6 +91,11 @@ func HijackDNS(interfaceName string, resolverIp string, resolverPort uint32, dom
 	if rawResponseFile != "" {
 		rawResponse, err = os.ReadFile(rawResponseFile)
 		if err != nil {
+			awesome_error.CheckErr(err)
+			return
+		}
+		if len(rawResponse) == 0 {
+			err = fmt.Errorf("payload file %q is empty; nothing to inject", rawResponseFile)
 			awesome_error.CheckErr(err)
 			return
 		}

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"github.com/ssst0n3/go-shijack"
 	"github.com/urfave/cli/v2"
 	"log"
@@ -26,6 +27,9 @@ func main() {
 			protocol := context.String("protocol")
 			switch protocol {
 			case "tcp", "":
+				if payloadFile == "" {
+					return fmt.Errorf("tcp hijack requires --payload-file (-f)")
+				}
 				gohijack.Hijack(interfaceName, srcIp, uint32(srcPort), payloadFile, !keep)
 			case "dns":
 				var answerIp net.IP
