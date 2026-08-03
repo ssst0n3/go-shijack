@@ -69,11 +69,10 @@ func CreateSocket() (rawConn *ipv4.RawConn, err error) {
 }
 
 func (c Connection) SendIP(buf []byte) (err error) {
-	dstIP, err := net.ResolveIPAddr("ip4", c.DstIP.String())
-	if err != nil {
-		awesome_error.CheckErr(err)
-		return
-	}
+	// DstIP is already a net.IP; avoid the stringify+parse round trip
+	// (net.ResolveIPAddr) on every injected packet. Under --keep this runs
+	// per SYN-ACK, so keeping it allocation-free matters.
+	dstIP := &net.IPAddr{IP: c.DstIP.To4()}
 	n, err := c.rawConn.WriteToIP(buf, dstIP)
 	if err != nil {
 		awesome_error.CheckErr(err)
@@ -184,11 +183,7 @@ func CreateSocketUDP() (rawConn *ipv4.RawConn, err error) {
 }
 
 func (c UDPConnection) SendIP(buf []byte) (err error) {
-	dstIP, err := net.ResolveIPAddr("ip4", c.DstIP.String())
-	if err != nil {
-		awesome_error.CheckErr(err)
-		return
-	}
+	dstIP := &net.IPAddr{IP: c.DstIP.To4()}
 	n, err := c.rawConn.WriteToIP(buf, dstIP)
 	if err != nil {
 		awesome_error.CheckErr(err)
