@@ -23,10 +23,20 @@ type Connection struct {
 // rawConn. The socket is created once per hijack session (see Hijack/HijackDNS)
 // instead of per packet, so on-path injection stays fast and no file
 // descriptors leak under --keep.
+//
+// Sequence-number fix: on a SYN-ACK the server's Seq is its ISN, but the SYN
+// flag consumes one sequence number (RFC 793), so the first data byte lives at
+// ISN+1. Injecting at ISN makes the receiver treat the first payload byte as a
+// retransmission of the SYN and trim it, corrupting the response. We add 1
+// when SYN is set so the injected segment's left edge is the first data byte.
 func NewConnectionFromPacket(packet gopacket.Packet, rawConn *ipv4.RawConn) (*Connection, error) {
 	ip4 := packet.Layer(layers.LayerTypeIPv4).(*layers.IPv4)
 	tcp := packet.Layer(layers.LayerTypeTCP).(*layers.TCP)
-	return NewConnection(ip4.SrcIP, ip4.DstIP, tcp.SrcPort, tcp.DstPort, tcp.Seq, tcp.Ack, rawConn)
+	seq := tcp.Seq
+	if tcp.SYN {
+		seq++
+	}
+	return NewConnection(ip4.SrcIP, ip4.DstIP, tcp.SrcPort, tcp.DstPort, seq, tcp.Ack, rawConn)
 }
 
 func NewConnection(srcIp, dstIp net.IP, srcPort, dstPort layers.TCPPort, seq, ack uint32, rawConn *ipv4.RawConn) (connection *Connection, err error) {
@@ -82,19 +92,23 @@ func (c Connection) GenerateLayers(payload []byte) (tcpLayer *layers.TCP, ipv4La
 		Ack:        c.Ack,
 		ACK:        true,
 		PSH:        true,
-		Window:     uint16(len(payload)),
+		// Window is a receive-window advertisement, not the payload size.
+		// Advertising len(payload) (often a few dozen bytes) makes the peer
+		// throttle; use a normal static window instead.
+		Window: 64240,
 		// Checksum calculate during serializing when set opts.ComputeChecksums
 	}
 	ipv4Layer = &layers.IPv4{
 		Version:  4,
 		IHL:      5,
-		Length:   uint16(tcpLayer.DataOffset) + tcpLayer.Window + uint16(5),
 		SrcIP:    c.SrcIP,
 		DstIP:    c.DstIP,
 		Protocol: layers.IPProtocolTCP,
 		TTL:      64,
 		Flags:    layers.IPv4DontFragment,
 		Options:  nil,
+		// Length is filled by SerializeLayers when FixLengths is set; leaving
+		// it 0 here avoids the previous bogus manual computation.
 	}
 	err = tcpLayer.SetNetworkLayerForChecksum(ipv4Layer)
 	if err != nil {
@@ -107,7 +121,7 @@ func (c Connection) Serialize(tcpLayer *layers.TCP, ipv4Layer *layers.IPv4, payl
 	buf := gopacket.NewSerializeBuffer()
 	opts := gopacket.SerializeOptions{
 		ComputeChecksums: true,
-		//FixLengths:       true,
+		FixLengths:       true,
 	}
 	err = gopacket.SerializeLayers(buf, opts,
 		ipv4Layer,
