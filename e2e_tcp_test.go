@@ -88,7 +88,14 @@ func TestE2EHijackTCP(t *testing.T) {
 	conn.SetReadDeadline(time.Now().Add(5 * time.Second))
 
 	resp, err := io.ReadAll(conn)
-	t.Logf("client read %d bytes: %q (err=%v)", len(resp), resp, err)
+	// The read deadline firing is the expected termination here: the silent
+	// server never sends EOF, so io.ReadAll can only stop when the deadline
+	// expires. The injected bytes are already in resp by then.
+	if ne, ok := err.(net.Error); ok && ne.Timeout() {
+		t.Logf("client read %d bytes: %q (read deadline fired — expected, silent server never EOFs)", len(resp), resp)
+	} else {
+		t.Logf("client read %d bytes: %q (err=%v)", len(resp), resp, err)
+	}
 
 	// 5. The client must have received our injected payload — specifically the
 	//    flag body, not an HTTP/0.9 error, not an empty read, not a truncated
