@@ -41,15 +41,15 @@ func (s *stats) logWindow() {
 	if s.windowSniffed == 0 && s.windowInjected == 0 && s.windowSkipped == 0 {
 		return
 	}
-	log.Logger.Infof("window: sniffed=%d injected=%d skipped=%d win=%d loss=%d inconclusive=%d",
-		s.windowSniffed, s.windowInjected, s.windowSkipped, s.windowWin, s.windowLoss, s.windowInconclusive)
+	log.Logger.Infof("last 5s: %d connection(s) seen, %d injected, %d won, %d lost, %d inconclusive, %d skipped",
+		s.windowSniffed, s.windowInjected, s.windowWin, s.windowLoss, s.windowInconclusive, s.windowSkipped)
 	s.windowSniffed, s.windowInjected, s.windowSkipped = 0, 0, 0
 	s.windowWin, s.windowLoss, s.windowInconclusive = 0, 0, 0
 }
 
 func (s *stats) logShutdown() {
-	log.Logger.Infof("shutdown: sniffed=%d injected=%d skipped=%d win=%d loss=%d inconclusive=%d",
-		s.totalSniffed, s.totalInjected, s.totalSkipped, s.totalWin, s.totalLoss, s.totalInconclusive)
+	log.Logger.Infof("shutdown summary: %d connection(s) seen, %d injected, %d won, %d lost, %d inconclusive, %d skipped",
+		s.totalSniffed, s.totalInjected, s.totalWin, s.totalLoss, s.totalInconclusive, s.totalSkipped)
 }
 
 // flowKey identifies a single TCP flow for pending-ack tracking. client and
