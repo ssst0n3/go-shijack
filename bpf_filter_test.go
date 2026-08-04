@@ -164,3 +164,95 @@ func newVMFromFilterUDP(t *testing.T, ip string, port uint32) *bpf.VM {
 	assert.NoError(t, err)
 	return newVMFromFilter(t, ins)
 }
+
+func mustFilterBidir(t *testing.T, ip string, port uint32) []bpf.RawInstruction {
+	t.Helper()
+	ins, err := GenerateFilterBidirectionalTCP(ip, port)
+	assert.NoError(t, err)
+	return ins
+}
+
+func newVMFromFilterBidir(t *testing.T, ip string, port uint32) *bpf.VM {
+	t.Helper()
+	return newVMFromFilter(t, mustFilterBidir(t, ip, port))
+}
+
+// tcpFrameDir builds an Ethernet/IPv4/TCP frame with explicit src/dst IP and
+// ports so the bidirectional filter can be exercised in both directions.
+func tcpFrameDir(srcIP net.IP, srcPort uint16, dstIP net.IP, dstPort uint16) []byte {
+	return buildEthernet(0x0800, buildIPv4(6, srcIP, dstIP, buildTCP(srcPort, dstPort)))
+}
+
+// --- GenerateFilterBidirectionalTCP matrix ---
+
+func TestBPFTCPBidir_AcceptsServerToClient(t *testing.T) {
+	vm := newVMFromFilterBidir(t, "169.254.169.254", 80)
+	pkt := tcpFrameDir(net.ParseIP("169.254.169.254"), 80, net.ParseIP("10.0.0.2"), 12345)
+	assert.True(t, vmAccept(t, vm, pkt), "server->client (src host/port) must be accepted")
+}
+
+func TestBPFTCPBidir_AcceptsClientToServer(t *testing.T) {
+	vm := newVMFromFilterBidir(t, "169.254.169.254", 80)
+	pkt := tcpFrameDir(net.ParseIP("10.0.0.2"), 12345, net.ParseIP("169.254.169.254"), 80)
+	assert.True(t, vmAccept(t, vm, pkt), "client->server (dst host/port) must be accepted")
+}
+
+func TestBPFTCPBidir_RejectsWrongPort(t *testing.T) {
+	vm := newVMFromFilterBidir(t, "169.254.169.254", 80)
+	pkt := tcpFrameDir(net.ParseIP("169.254.169.254"), 81, net.ParseIP("10.0.0.2"), 12345)
+	assert.False(t, vmAccept(t, vm, pkt), "wrong src port must be rejected")
+}
+
+func TestBPFTCPBidir_RejectsWrongIP(t *testing.T) {
+	vm := newVMFromFilterBidir(t, "169.254.169.254", 80)
+	pkt := tcpFrameDir(net.ParseIP("10.0.0.1"), 80, net.ParseIP("10.0.0.2"), 12345)
+	assert.False(t, vmAccept(t, vm, pkt), "wrong src IP must be rejected")
+}
+
+func TestBPFTCPBidir_RejectsUDP(t *testing.T) {
+	vm := newVMFromFilterBidir(t, "169.254.169.254", 80)
+	pkt := udpFrame(net.ParseIP("169.254.169.254"), 80)
+	assert.False(t, vmAccept(t, vm, pkt), "UDP must be rejected by TCP filter")
+}
+
+func TestBPFTCPBidir_RejectsIPv6(t *testing.T) {
+	vm := newVMFromFilterBidir(t, "169.254.169.254", 80)
+	pkt := buildEthernet(0x86dd, make([]byte, 40))
+	assert.False(t, vmAccept(t, vm, pkt), "IPv6 must be rejected")
+}
+
+func TestBPFTCPBidir_RejectsFragment(t *testing.T) {
+	vm := newVMFromFilterBidir(t, "169.254.169.254", 80)
+	ip := buildIPv4Fragment(6, net.ParseIP("169.254.169.254"), net.ParseIP("10.0.0.2"), buildTCP(80, 12345))
+	pkt := buildEthernet(0x0800, ip)
+	assert.False(t, vmAccept(t, vm, pkt), "fragmented packet must be rejected")
+}
+
+// TestFilterEquivalentTCPBidir asserts our GenerateFilterBidirectionalTCP agrees
+// with libpcap's "tcp and ((src host <ip> and src port <port>) or (dst host <ip>
+// and dst port <port>))" over a packet corpus.
+func TestFilterEquivalentTCPBidir(t *testing.T) {
+	const ip = "169.254.169.254"
+	const port = uint32(80)
+
+	ours := newVMFromFilterBidir(t, ip, port)
+	ref := libpcapVM(t, "tcp and ((src host "+ip+" and src port "+itoa(port)+") or (dst host "+ip+" and dst port "+itoa(port)+"))")
+
+	server := net.ParseIP(ip)
+	client := net.ParseIP("10.0.0.2")
+	corpus := [][]byte{
+		tcpFrameDir(server, 80, client, 12345),    // forward match
+		tcpFrameDir(client, 12345, server, 80),    // reverse match
+		tcpFrameDir(server, 81, client, 12345),    // wrong src port
+		tcpFrameDir(client, 12345, server, 81),    // wrong dst port
+		tcpFrameDir(net.ParseIP("10.0.0.1"), 80, client, 12345), // wrong src ip
+		tcpFrameDir(client, 12345, net.ParseIP("10.0.0.1"), 80), // wrong dst ip
+		udpFrame(server, 80),                      // UDP
+		buildEthernet(0x86dd, make([]byte, 40)),   // IPv6
+	}
+	for i, pkt := range corpus {
+		got := vmAccept(t, ours, pkt)
+		want := vmAccept(t, ref, pkt)
+		assert.Equalf(t, want, got, "packet %d: ours=%v libpcap=%v", i, got, want)
+	}
+}

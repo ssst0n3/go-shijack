@@ -3,13 +3,17 @@ package main
 import (
 	"context"
 	"fmt"
+	"github.com/ssst0n3/awesome_libs/log"
 	"github.com/ssst0n3/go-shijack"
 	"github.com/urfave/cli/v2"
-	"log"
+	stdlog "log"
 	"net"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
+
+	"github.com/sirupsen/logrus"
 )
 
 const (
@@ -18,6 +22,17 @@ const (
 )
 
 func main() {
+	// The shared logger defaults to SetReportCaller(true), which prepends every
+	// line with /abs/path/to/run.go:NN. That is noise for an operator watching
+	// hijack output — the structured message already says what happened. Disable
+	// it and switch to a full RFC3339 timestamp so logs can be correlated with
+	// system journals and packet captures.
+	log.Logger.SetReportCaller(false)
+	log.Logger.SetFormatter(&logrus.TextFormatter{
+		ForceColors:     true,
+		FullTimestamp:   true,
+		TimestampFormat: time.RFC3339,
+	})
 	app := &cli.App{
 		Name:  name,
 		Usage: usage,
@@ -47,7 +62,7 @@ func main() {
 				}
 				err = gohijack.HijackDNS(ctx, interfaceName, srcIp, uint32(srcPort), dnsDomain, answerIp, payloadFile, !keep)
 			default:
-				log.Fatalf("unknown protocol: %s (want tcp or dns)", protocol)
+				stdlog.Fatalf("unknown protocol: %s (want tcp or dns)", protocol)
 			}
 			return
 		},
@@ -93,6 +108,6 @@ func main() {
 		},
 	}
 	if err := app.Run(os.Args); err != nil {
-		log.Fatal(err)
+		stdlog.Fatal(err)
 	}
 }

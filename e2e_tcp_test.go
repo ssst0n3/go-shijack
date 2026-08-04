@@ -102,4 +102,16 @@ func TestE2EHijackTCP(t *testing.T) {
 	//    response. This is the exact symptom the #6 seq off-by-one produced.
 	assert.Contains(t, string(resp), "flag{test}",
 		"client must receive the injected flag; HTTP/0.9 or empty means the forged segment was rejected")
+
+	// 6. once mode must return after confirming the injection via the victim's
+	//    ACK, not hang. The client ACKed our segment (it consumed flag{test}),
+	//    so Hijack should observe a WIN and return within a few seconds. If it
+	//    is still running we either missed the ACK or the confirm logic hung.
+	select {
+	case he := <-hijackErr:
+		assert.NoError(t, he, "Hijack should return cleanly after confirming the win")
+		t.Logf("Hijack returned: %v", he)
+	case <-time.After(5 * time.Second):
+		t.Fatal("Hijack did not return within 5s — once mode is not returning after confirmation")
+	}
 }

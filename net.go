@@ -78,7 +78,7 @@ func (c Connection) SendIP(buf []byte) (err error) {
 		awesome_error.CheckErr(err)
 		return
 	}
-	log.Logger.Infof("%d bytes sent", n)
+	log.Logger.Debugf("SendIP: %d bytes to %s", n, dstIP.IP)
 	return
 }
 
@@ -189,7 +189,7 @@ func (c UDPConnection) SendIP(buf []byte) (err error) {
 		awesome_error.CheckErr(err)
 		return
 	}
-	log.Logger.Infof("%d bytes sent", n)
+	log.Logger.Debugf("SendIP UDP: %d bytes to %s", n, dstIP.IP)
 	return
 }
 
